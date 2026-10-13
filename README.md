@@ -72,6 +72,7 @@ python VieShow-IMDb-Ranker.py
 
 程式會依序取得威秀電影清單、搜尋 IMDb 影片資料、儲存資料，並嘗試產生 HTML 儀表板。
 
+
 ## 分析流程
 
 ```text
