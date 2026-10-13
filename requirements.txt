@@ -1,0 +1,4 @@
+nest-asyncio
+plotly
+beautifulsoup4
+playwright
