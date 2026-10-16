@@ -26,7 +26,7 @@ EXCLUDE_KEYWORDS = {"PRE", "TBC", "LIVE", "SUPPORT"}
 RE_BRACKET_CONTENT = re.compile(r"\((.*?)\)")
 RE_LEADING_BRACKET = re.compile(r"^(\([^)]*\)\s*)+")
 RE_TRAILING_BRACKET = re.compile(r"(\s*\([^)]*\))+$")
-RE_RE_RELEASE = re.compile(r"\s*\S*重映")
+RE_RELEASE_OR_RESTORED = re.compile(r"\s*\S*(?:修復版|修復|重映)")
 RE_MULTIPLE_SPACES = re.compile(r"\s+")
 
 
@@ -48,7 +48,7 @@ def should_exclude(en_title: str) -> bool:
 def clean_title(title: str) -> str:
     title = RE_LEADING_BRACKET.sub("", title)
     title = RE_TRAILING_BRACKET.sub("", title)
-    title = RE_RE_RELEASE.sub("", title)
+    title = RE_RELEASE_OR_RESTORED.sub("", title)
     return RE_MULTIPLE_SPACES.sub(" ", title).strip()
 
 
