@@ -164,31 +164,24 @@ def normalize_title(title: str) -> str:
     return re.sub(r"[\W_]+", "", title)
 
 
-async def search_and_get_detail(
+async def get_search_candidates(
     page: Page,
     query_title: str,
     zh_title: str,
     en_title: str,
-) -> dict[str, Any]:
-    """搜尋 IMDb，優先選擇片名吻合的結果，再進入內頁。"""
-    search_url = (
-        f"https://www.imdb.com/find/?q={quote(query_title)}&s=tt"
-    )
-
+    top_n: int = 2
+) -> list[dict[str, Any]]:
+    """搜尋 IMDb，計算每個結果與中英文的匹配度，回傳前 N 個候選清單。"""
+    search_url = f"https://www.imdb.com/find/?q={quote(query_title)}&s=tt"
     try:
-        await page.goto(
-            search_url,
-            wait_until="domcontentloaded",
-            timeout=20_000,
-        )
+        await page.goto(search_url, wait_until="domcontentloaded", timeout=20_000)
         await handle_captcha_if_needed(page)
 
         items_locator = page.locator("li.ipc-metadata-list-summary-item")
-
         try:
             await items_locator.first.wait_for(timeout=5_000)
         except Exception:
-            return {"status": "未找到結果", "score": 0.0}
+            return []
 
         zh_normalized = normalize_title(zh_title)
         en_normalized = normalize_title(en_title)
@@ -211,19 +204,11 @@ async def search_and_get_detail(
                 continue
 
             imdb_url = f"https://www.imdb.com{rel_link.split('?')[0]}"
-
-            # IMDb 標題可能帶有排名，例如 "1. Gentleman Thief"
             clean_title = re.sub(r"^\d+\.\s*", "", raw_title).strip()
             normalized_title = normalize_title(clean_title)
 
-            exact_zh = (
-                bool(zh_normalized)
-                and normalized_title == zh_normalized
-            )
-            exact_en = (
-                bool(en_normalized)
-                and normalized_title == en_normalized
-            )
+            exact_zh = bool(zh_normalized) and normalized_title == zh_normalized
+            exact_en = bool(en_normalized) and normalized_title == en_normalized
 
             score_zh = calculate_similarity(zh_title, clean_title)
             score_en = calculate_similarity(en_title, clean_title)
@@ -238,74 +223,71 @@ async def search_and_get_detail(
             })
 
         if not candidates:
-            return {"status": "未找到結果", "score": 0.0}
+            return []
 
         # 完整片名吻合優先，其次才比較相似度
         candidates.sort(
-            key=lambda candidate: (
-                candidate["exact_match"],
-                candidate["score"],
-            ),
+            key=lambda c: (c["exact_match"], c["score"]),
             reverse=True,
         )
 
-        best = candidates[0]
-
-        # 印出候選清單，方便確認錯誤匹配原因
-        for candidate in candidates[:5]:
-            print(
-                "      候選："
-                f"{candidate['imdb_title']} | "
-                f"score={candidate['score']:.3f} | "
-                f"exact={candidate['exact_match']} | "
-                f"{candidate['url']}"
-            )
-
-        if not best["url"]:
-            return {"status": "未找到結果", "score": 0.0}
-
-        print(
-            f"  └─ 進入內頁抓取: "
-            f"{best['imdb_title']} -> {best['url']}"
-        )
-
-        detail_info = await parse_imdb_detail_page(page, best["url"])
-        print(f"      IMDb 內頁解析結果：{detail_info}")
-        return {
-            "imdb_title": best["imdb_title"],
-            "url": best["url"],
-            "score": best["score"],
-            "status": "成功找到",
-            **detail_info,
-        }
+        return candidates[:top_n]
 
     except Exception as e:
-        return {"status": f"異常: {e}", "score": 0.0}
+        print(f"      ❌ 搜尋異常 ({query_title}): {e}")
+        return []
 
 async def get_imdb_info(page: Page, zh_title: str, en_title: str) -> dict[str, Any]:
-    SIMILARITY_THRESHOLD = 0.35
+    all_candidates = []
 
+    # 1. 中文搜尋並取前 2 名
     print(f"  └─ [1/2] 嘗試中文搜尋: '{zh_title}'")
-    res_zh = await search_and_get_detail(page, zh_title, zh_title, en_title)
+    zh_candidates = await get_search_candidates(page, zh_title, zh_title, en_title, top_n=2)
+    for c in zh_candidates:
+        c["source_query"] = "中文搜尋"
+        print(f"      中文候選：{c['imdb_title']} | score={c['score']:.3f} | exact={c['exact_match']} | {c['url']}")
+    all_candidates.extend(zh_candidates)
 
-    if res_zh.get("status") == "成功找到" and res_zh.get("score", 0) >= SIMILARITY_THRESHOLD:
-        res_zh["matched_by"] = "中文名稱"
-        return res_zh
-
+    # 2. 英文搜尋並取前 2 名
     print(f"  └─ [2/2] 改用英文搜尋: '{en_title}'")
-    res_en = await search_and_get_detail(page, en_title, zh_title, en_title)
+    en_candidates = await get_search_candidates(page, en_title, zh_title, en_title, top_n=2)
+    for c in en_candidates:
+        c["source_query"] = "英文搜尋"
+        print(f"      英文候選：{c['imdb_title']} | score={c['score']:.3f} | exact={c['exact_match']} | {c['url']}")
+    all_candidates.extend(en_candidates)
 
-    if res_en.get("status") == "成功找到":
-        res_en["matched_by"] = "英文名稱"
-        return res_en
+    if not all_candidates:
+        return {
+            "imdb_title": "未找到結果", "rating": 0.0, "vote_count": 0,
+            "genres": [], "primary_genre": "無", "genre_str": "無",
+            "budget": 0, "gross": 0, "url": None, "matched_by": "無",
+            "status": "中英文皆未找到結果",
+        }
 
+    # 3. 綜合所有候選（最多 4 個），再次依「完整吻合度 > 相似度分數」排序，取第一名
+    all_candidates.sort(
+        key=lambda c: (c["exact_match"], c["score"]),
+        reverse=True,
+    )
+
+    best = all_candidates[0]
+
+    print(
+        f"  └─ 綜合評比勝出: "
+        f"{best['imdb_title']} (來源：{best['source_query']}) -> {best['url']}"
+    )
+
+    detail_info = await parse_imdb_detail_page(page, best["url"])
+    print(f"      IMDb 內頁解析結果：{detail_info}")
+    
     return {
-        "imdb_title": "未找到結果", "rating": 0.0, "vote_count": 0,
-        "genres": [], "primary_genre": "無", "genre_str": "無",
-        "budget": 0, "gross": 0, "url": None, "matched_by": "無",
-        "status": "中英文皆未找到結果",
+        "imdb_title": best["imdb_title"],
+        "url": best["url"],
+        "score": best["score"],
+        "matched_by": best["source_query"],
+        "status": "成功找到",
+        **detail_info,
     }
-
 
 async def fetch_vieshow_movies(context: BrowserContext) -> list[Movie]:
     print("1. 正在取得威秀影城場次資料...")
@@ -582,7 +564,44 @@ async def main():
         print("\n[✓] 全流程執行完成！")
         await browser.close()
 
+async def test_single_movie(zh_title: str, en_title: str) -> dict[str, Any]:
+    """針對單一電影進行 IMDb 搜尋與內頁解析測試"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(
+            headless=False,  # 設為 False 可以親眼看到瀏覽器操作與驗證碼處理
+            args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
+        )
+
+        context = await browser.new_context(
+            user_agent="Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36",
+            locale="zh-TW",
+            viewport={"width": 1280, "height": 800},
+        )
+
+        await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+
+        page = await context.new_page()
+        await page.route("**/*", block_heavy_resources)
+
+        try:
+            print(f"🎬 開始單一測試：{zh_title} ({en_title})\n")
+            result = await get_imdb_info(page, zh_title, en_title)
+            
+            print("\n" + "="*40)
+            print("📊 IMDb 最終解析結果：")
+            print(json.dumps(result, ensure_ascii=False, indent=2))
+            print("="*40)
+            
+            return result
+        finally:
+            await page.close()
+            await browser.close()
 
 if __name__ == "__main__":
     nest_asyncio.apply()
     asyncio.run(main())
+
+    # test_zh = "人狼"
+    # test_en = "JIN-ROH"
+    
+    # asyncio.run(test_single_movie(test_zh, test_en))
