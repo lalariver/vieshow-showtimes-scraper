@@ -1,4 +1,11 @@
-nest-asyncio
-plotly
-beautifulsoup4
+# Browser automation
 playwright
+
+# HTML parsing
+beautifulsoup4
+
+# Interactive data visualization
+plotly
+
+# Support nested asyncio event loops in the Vieshow script
+nest-asyncio

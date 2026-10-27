@@ -1,116 +1,92 @@
-# 威秀上映電影 IMDb 評分與票房分析
+# IMDb 電影與影集評分分析工具
 
-使用 Python、Playwright 與 BeautifulSoup 擷取威秀影城目前上映電影清單，再到 IMDb 搜尋對應影片，整理評分、投票數、電影類型、製作預算及全球票房，最後匯出 CSV、SQLite 資料庫，並產生互動式 Plotly 分析儀表板。
+整合威秀影城上映電影與 Netflix「我的口袋名單」，透過 IMDb 搜尋影片資料，輸出 SQLite、CSV 與 Plotly 互動式 HTML 儀表板。
 
-> 本專案為個人學習與作品集專案。網站頁面結構、回應格式與存取規則可能變動，程式不保證每次執行都能取得完整資料。
-
-## 功能特色
-
-- **取得威秀電影清單**：透過 Playwright 的 API request 取得場次頁面資料，解析中英文片名。
-- **清理與篩選片名**：移除片名外層括號文字、整理空白，並依程式設定排除含有 `PRE`、`TBC`、`LIVE`、`SUPPORT` 等標記的項目。
-- **搜尋並匹配 IMDb 影片**：先搜尋中文片名，必要時再以英文片名搜尋；使用標題正規化與字串相似度排序候選結果。
-- **擷取 IMDb 詳細資料**：從 JSON-LD 與頁面 DOM 取得 IMDb 評分、投票數、電影類型、製作預算及全球票房。
-- **非同步處理**：使用 `asyncio` 與 `Playwright` 非同步 API 處理頁面，並限制同時處理的影片數量。
-- **資料匯出**：輸出 CSV 與 SQLite 資料庫。
-- **互動式資料視覺化**：使用 Plotly 產生 HTML 儀表板，呈現評分與投票數、電影類型統計，以及預算／票房等指標。
-
-## 使用技術
-
-- Python 3.10+
-- Playwright（非同步瀏覽器自動化）
-- BeautifulSoup4（HTML 解析）
-- Plotly（互動式圖表）
-- asyncio、sqlite3、csv、json、re、difflib、unicodedata 等 Python 標準函式庫
-- nest-asyncio
-
-## 專案輸出
-
-程式成功執行後，預設會在目前工作目錄產生以下檔案：
-
-| 檔案 | 說明 |
-|---|---|
-| `movies_imdb.csv` | 電影清單與 IMDb 資料，可用試算表軟體檢視。 |
-| `movies_imdb.db` | SQLite 資料庫，資料表名稱為 `movies`。 |
-| `movies_dashboard.html` | Plotly 互動式分析儀表板，可用瀏覽器開啟。 |
-
-CSV 內容包括中文片名、IMDb 標題、評分、投票數、主要類型、所有類型、預算、全球票房、IMDb 網址及匹配方式等欄位。
-
-## 環境需求
-
-- Python 3.10 或更新版本
-- 可連線至網際網路
-- Playwright 支援的 Chromium 瀏覽器
-
-## 安裝與執行
-
-以下以 macOS 為例。請先將程式碼存成 `VieShow-IMDb-Ranker.py`，或將下列指令中的檔名換成你實際使用的 Python 檔名。
-
-### 1. 建立並啟用虛擬環境
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 2. 安裝 Python 套件
-
-```bash
-python -m pip install -r requirements.txt
-```
-
-### 3. 安裝 Playwright Chromium
-
-```bash
-python -m playwright install chromium
-```
-
-### 4. 執行程式
-
-```bash
-python VieShow-IMDb-Ranker.py
-```
-
-程式會依序取得威秀電影清單、搜尋 IMDb 影片資料、儲存資料，並嘗試產生 HTML 儀表板。
-
-
-## 分析流程
+## 專案結構
 
 ```text
-威秀影城電影清單
-        ↓
-解析中英文片名並清理資料
-        ↓
-排除指定標記的項目
-        ↓
-以中文片名搜尋 IMDb
-        ↓
-必要時改用英文片名搜尋
-        ↓
-比對候選標題並讀取影片內頁
-        ↓
-擷取評分、投票數、類型、預算與全球票房
-        ↓
-依 IMDb 評分排序
-        ↓
-輸出 CSV、SQLite 與 Plotly HTML 儀表板
+vieshow-showtimes-scraper/
+├── viewshow_imdb.py             # 威秀資料、IMDb 查詢與共用輸出功能
+├── netflix_imdb.py              # Netflix 主流程、快取與資料更新
+├── netflix_scraper.py           # Netflix 分類頁與「我的口袋名單」擷取
+├── requirements.txt             # Python 第三方套件
+├── README.md
+├── .gitignore
+├── config/                      # 本機設定；Cookie 不上傳 GitHub
+│   ├── netflix_cookies.json
+│   └── imdb_cookies.json        # 若有使用
+├── data/
+│   ├── vieshow/                 # 威秀 CSV／SQLite 資料
+│   └── netflix/                 # Netflix 節目與電影 CSV／SQLite 資料
+├── reports/                     # HTML 儀表板
+└── debug/                       # 截圖與除錯輸出，不上傳 GitHub
 ```
 
-## 資料與執行注意事項
+資料夾由程式自動建立；`config/` 內的 Cookie 檔案需在本機準備，不應提交至公開儲存庫。
 
-1. **網站資料可能變動**：威秀影城或 IMDb 的 API、HTML 結構、欄位或搜尋結果變動時，可能需要更新解析邏輯。
-2. **IMDb 搜尋結果需要核對**：程式會根據片名相似度挑選候選結果；中文片名、譯名、重映版本或同名作品可能造成匹配錯誤，建議檢查輸出的 IMDb 網址與候選紀錄。
-3. **資料可能不完整**：IMDb 頁面未提供或程式無法解析的評分、類型、預算或票房欄位，可能以預設值呈現；`0` 不一定代表實際數值為零。
-4. **驗證與存取限制**：網站可能顯示 CAPTCHA 或限制自動化存取。請遵守網站使用條款與存取規範；遇到限制時，應停止或改用網站允許的取得方式，不要嘗試規避存取控制。
-5. **請控制請求頻率**：本程式目前同時處理的影片數量設為 2。若修改併發數或執行頻率，請考量網站負載與其規範。
-6. **輸出檔案**：每次執行會覆寫預設名稱的 CSV、SQLite 資料庫及儀表板；請先備份需要保留的結果。
+## 功能
 
-## 後續可改善方向
+- **威秀上映電影**：從威秀場次 API 取得上映片名，排除 `PRE`、`TBC`、`LIVE`、`SUPPORT` 等項目。
+- **Netflix 節目／電影**：選擇分類，擷取「我的口袋名單」輪播中的片名並去除重複項目。
+- **IMDb 資料**：搜尋候選片名，優先使用完全吻合的結果，再參考文字相似度；解析評分、投票數、類型、預算及全球票房。
+- **人工驗證**：遇到 IMDb 人機驗證時，可在已開啟的瀏覽器中手動完成，再繼續查詢。
+- **快取與更新**：Netflix 可使用既有資料庫片名重新查詢 IMDb；部分查詢會合併結果，完整查詢則以本次成功結果更新資料。
 
-- 增加 IMDb 匹配信心門檻與人工確認流程。
-- 將抓取、資料清理、儲存及視覺化拆分成獨立模組。
-- 加入 logging、重試策略與單元測試。
-- 對輸出資料加入抓取時間與資料來源欄位，方便追蹤資料更新狀態。
+## 環境建置
 
-## 聲明
+建議使用 Python 3.12 或以上版本。
 
-本專案用於 Python、網頁資料擷取、資料整理、資料庫儲存及資料視覺化的學習展示。電影資訊與評分屬於各網站提供的資料，請依相關網站的使用條款及適用規範使用。
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+playwright install chromium
+```
+
+macOS／Linux 使用上述虛擬環境啟用指令；Windows 可使用 `.venv\Scripts\activate`。
+
+## Netflix Cookie 設定
+
+需要重新擷取 Netflix 分類頁時，請將有效的 Cookie JSON 放在：
+
+```text
+config/netflix_cookies.json
+```
+
+這個檔案可能含有登入工作階段資訊，**不可提交到 GitHub**。只使用自己的帳號與有權存取的內容。若只使用 SQLite 快取片名重新查詢 IMDb，程式不需要開啟 Netflix 分類頁，也不需要讀取 Netflix Cookie。
+
+## 執行方式
+
+請先在終端機切換到專案根目錄，再執行指令，讓相對路徑指向正確的資料夾。
+
+### 威秀上映電影
+
+```bash
+python viewshow_imdb.py
+```
+
+### Netflix 節目／電影
+
+```bash
+python netflix_imdb.py
+```
+
+啟動後依終端機提示選擇「節目」或「電影」，再依畫面處理登入、隱私提示或人機驗證。
+
+## 輸出檔案
+
+| 來源 | 資料檔案 | 儀表板 |
+|---|---|---|
+| 威秀 | `data/vieshow/viewshow_movies_imdb.csv`、`data/vieshow/viewshow_movies_imdb.db` | `reports/viewshow_movies_dashboard.html` |
+| Netflix 電影 | `data/netflix/netflix_movies_imdb.csv`、`data/netflix/netflix_movies_imdb.db` | `reports/netflix_movies_dashboard.html` |
+| Netflix 節目 | `data/netflix/netflix_series_imdb.csv`、`data/netflix/netflix_series_imdb.db` | `reports/netflix_series_dashboard.html` |
+
+CSV 與 HTML 報表適合挑選後提交到 GitHub 作為作品展示；SQLite 資料庫、Cookie 與除錯產物預設忽略。HTML 儀表板可能包含較大的互動式 JavaScript，提交前請確認檔案大小。
+
+## Git 提交前檢查
+
+```bash
+git status --short
+```
+
+確認沒有 `config/*cookies*.json`、SQLite 資料庫、虛擬環境或除錯檔案出現在待提交清單。`.gitignore` 不會自動停止追蹤已經提交過的檔案；若 Cookie 曾經提交到公開儲存庫，請先撤銷／更新相關登入工作階段，再處理 Git 歷史紀錄。

@@ -1,19 +1,48 @@
-
-# Python
+# Python cache and compiled files
 __pycache__/
 *.py[cod]
+*.pyo
 
-# Virtual environment
+# Virtual environments
 .venv/
 venv/
+env/
 
-# Environment variables
+# Secrets and browser sessions (never commit cookies)
 .env
+.env.*
+!.env.example
+/imdb_cookies.json
+/netflix_cookies.json
+/config/imdb_cookies.json
+/config/netflix_cookies.json
+/config/*cookies*.json
+
+# Local debugging artifacts
+/debug/
+/imdb_debug/
+/netflix_category_navigation_timeout*.png
+
+# Generated databases
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+
+# Test/type-checker caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
 
-# Generated output
-movies_imdb.csv
-movies_imdb.db
-movies_dashboard.html
+# IDE local files
+.idea/
